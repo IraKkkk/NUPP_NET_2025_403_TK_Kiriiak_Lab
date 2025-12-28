@@ -9,6 +9,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Games.Common\Games.Common.csproj" />
-  </ItemGroup>
+    </ItemGroup>
 
 </Project>

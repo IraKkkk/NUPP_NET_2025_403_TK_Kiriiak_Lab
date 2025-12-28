@@ -1,73 +1,48 @@
 using System;
-using System.Linq; // Обов'язково для статистики (Min, Max)
-using System.Threading.Tasks; // Для асинхронності
-using Games.Common; // Підключаємо твої класи
+using System.Threading.Tasks;
+using Games.Common;            // Твої моделі (OnlineGame)
+using Games.Infrastructure;    // Твій контекст і сервіси
+using Games.Infrastructure.Models; // Твої таблиці
+using Microsoft.EntityFrameworkCore; // Важливо для роботи з БД
 
 class Program
 {
     static async Task Main(string[] args)
     {
-        // Щоб коректно відображалась кирилиця (якщо є)
         Console.OutputEncoding = System.Text.Encoding.UTF8;
-        Console.WriteLine("=== Lab 2: Games Multithreading ===");
+        Console.WriteLine("=== Lab 3: Database (SQLite) ===");
 
-        string filePath = "games_lab2.json";
-
-        // 1. Створюємо сервіс (працюємо саме з OnlineGame)
-        ICrudServiceAsync<OnlineGame> gameService = new FileCrudServiceAsync<OnlineGame>(filePath);
-
-        Console.WriteLine("Генеруємо 1000 ігор паралельно...");
-
-        // 2. PARALLEL: Паралельне створення об'єктів
-        // Parallel.For розбиває задачу на потоки процесора
-        Parallel.For(0, 1000, i =>
-        {
-            // Створюємо випадкову гру через твій метод
-            var game = OnlineGame.CreateNew();
-            
-            // Додаємо в сервіс (синхронне очікування .Wait() для Parallel.For)
-            gameService.CreateAsync(game).Wait(); 
-        });
-
-        Console.WriteLine("Генерацію завершено.");
-
-        // 3. Збереження у файл (Асинхронно)
-        Console.WriteLine("Зберігаємо у файл...");
-        await gameService.SaveAsync();
-
-        // 4. Отримання даних для аналізу
-        // (Читаємо з файлу або пам'яті)
-        var allGames = await gameService.ReadAllAsync();
-
-        Console.WriteLine($"\nВсього ігор у базі: {allGames.Count()}");
-
-        // 5. LINQ: Статистика
-        if (allGames.Any())
-        {
-            // Шукаємо найстарішу та найновішу гру за роком
-            int minYear = allGames.Min(g => g.Year);
-            int maxYear = allGames.Max(g => g.Year);
-            
-            // Середній рік (Average повертає double)
-            double avgYear = allGames.Average(g => g.Year);
-
-            Console.WriteLine($"\n--- СТАТИСТИКА (LINQ) ---");
-            Console.WriteLine($"Найстаріша гра: {minYear} рік");
-            Console.WriteLine($"Найновіша гра:  {maxYear} рік");
-            Console.WriteLine($"Середній рік випуску: {avgYear:F0}"); // F0 - без ком
-        }
-
-        // 6. ПАГІНАЦІЯ (Виводимо першу сторінку, 5 штук)
-        Console.WriteLine("\n--- ПАГІНАЦІЯ (Перші 5 ігор) ---");
-        var page1 = await gameService.ReadAllAsync(1, 5);
+        // 1. Підключаємося до Бази Даних
+        using var context = new GamesContext();
         
-        foreach (var game in page1)
+        // Гарантуємо, що база даних існує
+        context.Database.EnsureCreated(); 
+
+        // 2. Налаштовуємо сервіс роботи з БД
+        var repository = new Repository<OnlineGameEntity>(context);
+        
+        // Використовуємо DbCrudService замість старого FileCrudServiceAsync
+        ICrudServiceAsync<OnlineGame> dbService = new DbCrudService(repository);
+
+        // 3. Генеруємо та додаємо дані
+        Console.WriteLine("\nГенеруємо 5 нових ігор і зберігаємо в БД...");
+        
+        for (int i = 0; i < 5; i++)
         {
-            // Використовуємо твій метод ShowInfo
-            game.ShowInfo();
+            var game = OnlineGame.CreateNew();
+            await dbService.CreateAsync(game); // Тепер це пише в games.db
+            Console.WriteLine($"Added: {game.Title}");
         }
 
-        Console.WriteLine("\nРоботу завершено. Натисніть Enter.");
-        Console.ReadLine();
+        // 4. Читаємо з Бази Даних
+        Console.WriteLine("\n--- Зчитуємо всі ігри з Бази Даних ---");
+        var gamesFromDb = await dbService.ReadAllAsync();
+
+        foreach (var g in gamesFromDb)
+        {
+            g.ShowInfo();
+        }
+
+        Console.WriteLine("\nГотово! Дані збережено у файл games.db");
     }
 }
